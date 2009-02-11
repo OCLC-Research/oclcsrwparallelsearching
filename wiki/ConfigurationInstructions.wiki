@@ -21,7 +21,16 @@ db.FederatedDSpace.class=ORG.oclc.os.SRW.ParallelSearching.SRWMergeDatabase.clas
 db.FederatedDSpace.home=f:/DSpace/config/
 db.FederatedDSpace.configuration=SRWDatabase.FederatedSearching.props
 }}}
- 
+
+The databases to be searched must be local SRW databases.  Another SRWDatabase implementation provides access to remote databases as local databases.  To do this, you add the same sort of information as above, but with a different database class.
+
+An example might be:
+{{{
+db.RemoteMITDSpace.class=ORG.oclc.os.SRW.ParallelSearching.SRWRemoteDatabase.class
+db.RemoteMITDSpace.home=f:/DSpace/config/
+db.RemoteMITDSpace.configuration=SRWDatabase.MITDSpace.props
+}}}
+
 =Database Specific Configuration Information=
 The SRWDatabase.props file serves two primary roles.  First, it contains much of the information needed to generate an Explain record for the database.  Second, it specifies classes and configuration information necessary to generate an SRW gateway to a local database system.
 
@@ -61,4 +70,16 @@ databaseInfo.description=A database federating 2 copies of the builtin test data
 databaseInfo.contact=Ralph LeVan (levan@oclc.org)
 
 DBList=test, test
+}}}
+
+==Remote Searching Specific Information==
+||remoteURL|| The URL of the remote SRU database.||
+
+=Example SRWDatabase.props file=
+{{{
+databaseInfo.title=OCLC's Identities Database
+databaseInfo.description=OCLC's Identities Database
+databaseInfo.contact=Ralph LeVan (levan@oclc.org)
+
+remoteURL=http://worldcat.org/identities/srw/search/Identities
 }}}
