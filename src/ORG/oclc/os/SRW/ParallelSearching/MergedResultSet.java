@@ -21,7 +21,6 @@
 
 package ORG.oclc.os.SRW.ParallelSearching;
 
-import ORG.oclc.os.SRW.ParallelSearching.SRWDatabaseThread;
 import gov.loc.www.zing.srw.SearchRetrieveResponseType;
 
 /**
