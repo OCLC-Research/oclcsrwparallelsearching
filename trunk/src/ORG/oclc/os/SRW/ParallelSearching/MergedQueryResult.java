@@ -33,13 +33,15 @@ public class MergedQueryResult extends QueryResult {
     long /*postings[],*/ totalPostings=0;
     RequestBucket rb;
 //    String resultSetIds[];
-    SRWDatabaseThread[] db;
+    SRWDatabaseThread[] componentDBs;
+    SRWMergeDatabase db;
 
     /**
      * Creates a new instance of MergedQueryResult
      */
-    public MergedQueryResult(SRWDatabaseThread[] db, RequestBucket rb) {
+    public MergedQueryResult(SRWMergeDatabase db, SRWDatabaseThread[] componentDB, RequestBucket rb) {
         this.db=db;
+        this.componentDBs=componentDB;
         this.rb=rb;
 //        postings=new long[db.length];
 //        resultSetIds=new String[db.length];
@@ -66,21 +68,21 @@ public class MergedQueryResult extends QueryResult {
     }
 
     public QueryResult findResult(long startPoint) {
-        for(int i=0; i<db.length; i++) {
-            if(db[i].result.getNumberOfRecords()>startPoint)
-                return db[i].result;
+        for(int i=0; i<componentDBs.length; i++) {
+            if(componentDBs[i].result.getNumberOfRecords()>startPoint)
+                return componentDBs[i].result;
         }
         return null;
     }
 
     public String toString() {
         StringBuffer sb=new StringBuffer();
-        sb.append("MergedQueryResult: numDBs=").append(db.length);
+        sb.append("MergedQueryResult: numDBs=").append(componentDBs.length);
         sb.append(", totalPostings=").append(totalPostings).append('\n');
-        for(int i=0; i<db.length; i++) {
+        for(int i=0; i<componentDBs.length; i++) {
             sb.append("i=").append(i).append(": ");
-            sb.append("db=").append(db[i].getDB().dbname);
-            sb.append(", postings=").append(db[i].result.getNumberOfRecords());
+            sb.append("db=").append(componentDBs[i].getDB().dbname);
+            sb.append(", postings=").append(componentDBs[i].result.getNumberOfRecords());
 //            sb.append(", resultSetId=").append(resultSetIds[i]);
             sb.append('\n');
         }
