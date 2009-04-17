@@ -39,6 +39,7 @@ import java.io.InputStreamReader;
 import java.net.URL;
 import java.util.Hashtable;
 import java.util.Properties;
+import javax.servlet.http.HttpServletRequest;
 import org.apache.axis.types.NonNegativeInteger;
 import org.apache.axis.types.PositiveInteger;
 import org.apache.commons.logging.Log;
@@ -205,7 +206,7 @@ public class SRWRemoteDatabase extends SRWDatabase {
     }
 
     public void init(String dbname, String srwHome, String dbHome,
-      String dbPropertiesFileName, Properties dbProperties)
+      String dbPropertiesFileName, Properties dbProperties, HttpServletRequest request)
       throws java.net.MalformedURLException {
         log.debug("entering SRWRemoteDatabase.init, dbname="+dbname);
         initDB(dbname, srwHome, dbHome, dbPropertiesFileName, dbProperties);
