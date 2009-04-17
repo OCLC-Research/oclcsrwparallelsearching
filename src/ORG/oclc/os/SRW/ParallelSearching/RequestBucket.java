@@ -41,7 +41,6 @@ public class RequestBucket {
     public QueryResult results[];
     public Object request;
 
-
     Hashtable registry=new Hashtable(), waitList;
 
     RequestBucket(int numThreads) {
