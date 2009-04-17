@@ -38,6 +38,7 @@ import java.util.Hashtable;
 import java.util.Properties;
 import java.util.StringTokenizer;
 import java.util.Vector;
+import javax.servlet.http.HttpServletRequest;
 import javax.xml.parsers.ParserConfigurationException;
 import javax.xml.soap.SOAPException;
 
@@ -64,10 +65,11 @@ import org.z3950.zing.cql.CQLTermNode;
 public class SRWMergeDatabase extends SRWDatabase {
     static Log log=LogFactory.getLog(SRWMergeDatabase.class);
 
-    Hashtable info=new Hashtable();
+    boolean             groupRecordsByComponentDatabase=true;
+    Hashtable           info=new Hashtable();
     int                 counter=0;
     RequestBucket       rb;
-    SRWDatabaseThread[] mergeDB;
+    SRWDatabaseThread[] componentDBs;
 
     public void addRenderer(String schemaName, String schemaID, Properties props) throws InstantiationException {
     }
@@ -115,17 +117,52 @@ public class SRWMergeDatabase extends SRWDatabase {
         boolean didIt=false;
         rb.setRequest(new DeleteRequest(key), ++counter);
         rb.waitUntilDone();
-        for(int i=0; i<mergeDB.length; i++) {
-            if(mergeDB[i]==null)
+        for(int i=0; i<componentDBs.length; i++) {
+            if(componentDBs[i]==null)
                 log.error("mergeDB["+i+"] is null!");
             else {
-                if(log.isDebugEnabled()) log.debug("deleted from "+mergeDB[i].db.dbname+": "+mergeDB[i].didIt);
-                if(mergeDB[i].didIt)
+                if(log.isDebugEnabled()) log.debug("deleted from "+componentDBs[i].db.dbname+": "+componentDBs[i].didIt);
+                if(componentDBs[i].didIt)
                     didIt=true;
             }
         }
         return didIt;
     }
+
+    public String getConfigInfo() {
+        return componentDBs[0].getDB().getConfigInfo();
+    }
+
+    public String getExtraResponseData(QueryResult result, SearchRetrieveRequestType request) {
+        SRWDatabaseThread onedb;
+        String responseData=null;
+        StringBuilder sb=new StringBuilder();
+        sb.append("<componentResults ")
+          .append("xmlns=\"info:srw/extension/5/componentResults\"")
+          .append(" count=\"").append(componentDBs.length).append("\">\n");
+        for(int i=0; i<componentDBs.length; i++) {
+            onedb=componentDBs[i];
+            sb.append("<componentResult databaseName=\"")
+              .append(onedb.db.dbname)
+              .append("\" count=\"").append(onedb.result.getNumberOfRecords())
+              .append("\">");
+            sb.append("<link>");
+            sb.append(onedb.db.baseURL).append('?').append(Utilities.xmlEncode(Utilities.objToSru(request))).append("</link>");
+            sb.append("</componentResult>\n");
+        }
+        sb.append("</componentResults>");
+        responseData=sb.toString();
+        if(log.isDebugEnabled())
+            log.debug("ExtraResponseData:\n"+responseData);
+        return responseData;
+    }
+
+    
+    public String getIndexInfo() {
+        return componentDBs[0].getDB().getIndexInfo();
+    }
+
+
 
     public TermList getTermList(CQLTermNode seedTerm, int position,
       int maxTerms, ScanRequestType request) {
@@ -162,12 +199,12 @@ public class SRWMergeDatabase extends SRWDatabase {
         TermType term, termArray[], tterm;
         TermsType terms;
         Vector termsV=new Vector();
-        for(int i=0; i<mergeDB.length; i++) {
-            if(mergeDB[i].scanResponse==null) {
-                log.error("mergeDB["+i+"] ("+mergeDB[i].getName()+") returned: "+mergeDB[i].scanResponse);
+        for(int i=0; i<componentDBs.length; i++) {
+            if(componentDBs[i].scanResponse==null) {
+                log.error("mergeDB["+i+"] ("+componentDBs[i].getName()+") returned: "+componentDBs[i].scanResponse);
                 continue;
             }
-            scanResponse=(ScanResponseType)mergeDB[i].scanResponse;
+            scanResponse=(ScanResponseType)componentDBs[i].scanResponse;
             diagnostics=scanResponse.getDiagnostics();
             if(diagnostics!=null) {
                 if(newDiagnostics==null)
@@ -251,32 +288,18 @@ public class SRWMergeDatabase extends SRWDatabase {
     }
 
 
-    public String getConfigInfo() {
-        return mergeDB[0].getDB().getConfigInfo();
-    }
-
-    public String getExtraResponseData(QueryResult result, SearchRetrieveRequestType request) {
-        return null;
-    }
-    
-    public String getIndexInfo() {
-        return mergeDB[0].getDB().getIndexInfo();
-    }
-
-
-
     public QueryResult getQueryResult(String query,
       SearchRetrieveRequestType request) throws InstantiationException {
         long startTime=System.currentTimeMillis();
         rb.setRequest(request, ++counter);
         rb.waitUntilDone();
-        MergedQueryResult result=new MergedQueryResult(mergeDB, rb);
+        MergedQueryResult result=new MergedQueryResult(this, componentDBs, rb);
         QueryResult qr;
-        for(int i=0; i<mergeDB.length; i++) {
-            if(mergeDB[i]==null)
+        for(int i=0; i<componentDBs.length; i++) {
+            if(componentDBs[i]==null)
                 log.error("mergeDB["+i+"] is null!");
             else {
-                qr=(QueryResult)mergeDB[i].result;
+                qr=(QueryResult)componentDBs[i].result;
                 if(qr==null)
                     log.error("mergeDB["+i+"].result is null!");
                 else {
@@ -291,13 +314,16 @@ public class SRWMergeDatabase extends SRWDatabase {
     }
     
     public String getSchemaInfo() {
-        return mergeDB[0].getDB().getSchemaInfo();
+        return componentDBs[0].getDB().getSchemaInfo();
     }
 
 
     public void init(final String dbname, String srwHome, String dbHome,
-      String dbPropertiesFileName, Properties dbProperties) {
-        log.info("entering init, dbname="+dbname);
+      String dbPropertiesFileName, Properties dbProperties, HttpServletRequest request) {
+//        log.error("SRWMergeDatabase.init() called from:");
+//        log.error("request="+request);
+//        Thread.dumpStack();
+        log.debug("entering init, dbname="+dbname);
         initDB(dbname, srwHome, dbHome, dbPropertiesFileName, dbProperties);
         
         String dbList=dbProperties.getProperty("DBList");
@@ -307,19 +333,24 @@ public class SRWMergeDatabase extends SRWDatabase {
             return;
         }
         log.info("dbList="+dbList);
-        
+
+        String spreadRecordsAcrossComponents=dbProperties.getProperty("spreadRecordsAcrossComponents");
+        if(spreadRecordsAcrossComponents!=null)
+            if(spreadRecordsAcrossComponents.equalsIgnoreCase("true"))
+                groupRecordsByComponentDatabase=false;
+
         StringTokenizer st=new StringTokenizer(dbList, ", \t");
         int numThreads=st.countTokens();
         rb=new RequestBucket(numThreads);
-        mergeDB=new SRWDatabaseThread[numThreads];
+        componentDBs=new SRWDatabaseThread[numThreads];
         String dbName;
         for(int i=0; i<numThreads; i++) {
             dbName=st.nextToken();
             try {
-                mergeDB[i]=new SRWDatabaseThread();
-                mergeDB[i].init(rb, i, SRWDatabase.getDB(dbName, srwProperties));
-                mergeDB[i].test("bogus");
-                mergeDB[i].start();
+                componentDBs[i]=new SRWDatabaseThread();
+                componentDBs[i].init(rb, i, SRWDatabase.getDB(dbName, srwProperties, null, request));
+                componentDBs[i].test("bogus");
+                componentDBs[i].start();
             }
             catch(Exception e) {
                 log.error(e);
