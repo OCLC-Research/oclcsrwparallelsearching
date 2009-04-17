@@ -27,6 +27,8 @@ import ORG.oclc.os.SRW.Record;
 import ORG.oclc.os.SRW.RecordIterator;
 import ORG.oclc.os.SRW.SRWDiagnostic;
 import gov.loc.www.zing.srw.ExtraDataType;
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.NoSuchElementException;
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -41,7 +43,7 @@ public class MergedRecordIterator implements RecordIterator {
 //    boolean perhapsCachedResults;
     ExtraDataType edt;
     int numRecs;
-    long postings, startPoint;
+    long componentStartPoint, postings, startPoint;
     MergedQueryResult result;
     RecordIterator ri=null;
     String schemaID;
@@ -77,43 +79,64 @@ public class MergedRecordIterator implements RecordIterator {
     }
 
     public Record nextRecord() throws NoSuchElementException {
-        try {
-            if(ri!=null && ri.hasNext()) {
-                startPoint++;
-                return ri.nextRecord();
-            }
-        }
-        catch(SRWDiagnostic e) {
-            log.error(e, e);
-            throw new NoSuchElementException(e.getMessage());
-        }
-
-        int partitionNum;
-        long actualStartPoint=startPoint;
-        QueryResult qr=null;
-        for(partitionNum=0; partitionNum<result.db.length; partitionNum++) {
-            if(result.db[partitionNum].result.getNumberOfRecords()>=actualStartPoint) {
-                qr=result.db[partitionNum].result;
-                log.debug("getting QueryResult from partition "+partitionNum);
-                break;
-            }
-            actualStartPoint-=result.db[partitionNum].result.getNumberOfRecords();
-        }
-        if(qr!=null) {
+        if(result.db.groupRecordsByComponentDatabase) {
             try {
-                if(log.isDebugEnabled()) {
-                    log.debug("newRecordIterator for "+qr);
-                    log.debug("actualStartPoint="+actualStartPoint+", numRecs="+numRecs+", schemaID="+schemaID);
+                if(ri!=null && ri.hasNext()) {
+                    startPoint++;
+                    return ri.nextRecord();
                 }
-                ri=qr.newRecordIterator(actualStartPoint, numRecs, schemaID, edt);
             }
-            catch(InstantiationException e) {
+            catch(SRWDiagnostic e) {
                 log.error(e, e);
                 throw new NoSuchElementException(e.getMessage());
             }
-            return nextRecord();
+
+            int partitionNum;
+            long actualStartPoint=startPoint;
+            QueryResult qr=null;
+            for(partitionNum=0; partitionNum<result.componentDBs.length; partitionNum++) {
+                if(result.componentDBs[partitionNum].result.getNumberOfRecords()>=actualStartPoint) {
+                    qr=result.componentDBs[partitionNum].result;
+                    log.debug("getting QueryResult from partition "+partitionNum);
+                    break;
+                }
+                actualStartPoint-=result.componentDBs[partitionNum].result.getNumberOfRecords();
+            }
+            if(qr!=null) {
+                try {
+                    if(log.isDebugEnabled()) {
+                        log.debug("newRecordIterator for "+qr);
+                        log.debug("actualStartPoint="+actualStartPoint+", numRecs="+numRecs+", schemaID="+schemaID);
+                    }
+                    ri=qr.newRecordIterator(actualStartPoint, numRecs, schemaID, edt);
+                }
+                catch(InstantiationException e) {
+                    log.error(e, e);
+                    throw new NoSuchElementException(e.getMessage());
+                }
+                return nextRecord();
+            }
+            throw new NoSuchElementException("startPoint="+startPoint+", postings="+postings+", actualStartPoint in partition "+partitionNum+" = "+actualStartPoint);
         }
-        throw new NoSuchElementException("startPoint="+startPoint+", postings="+postings+", actualStartPoint in partition "+partitionNum+" = "+actualStartPoint);
+        else {
+            ArrayList dbs=new ArrayList(Arrays.asList(result.componentDBs));
+            int i;
+            SRWDatabaseThread db;
+            componentStartPoint=result.getNumberOfRecords()/dbs.size();
+            if(result.getNumberOfRecords()%dbs.size()!=0)
+                componentStartPoint++;
+            for(i=0; i<dbs.size(); i++) {
+                db=(SRWDatabaseThread)dbs.get(i);
+                if(db.result.getNumberOfRecords()<componentStartPoint) {
+                    dbs.remove(i);
+                    i--;
+                }
+            }
+            componentStartPoint=result.getNumberOfRecords()/dbs.size();
+            if(result.getNumberOfRecords()%dbs.size()!=0)
+                componentStartPoint++;
+            return null;
+        }
     }
     
     public void remove() throws UnsupportedOperationException {
